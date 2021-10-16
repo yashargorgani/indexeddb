@@ -1,0 +1,253 @@
+<html>
+
+<head>
+    <title>Yashar Gorgani</title>
+</head>
+
+<body>
+    <h1>Client-side storage</h1>
+    <h2>Yashar Gorgani</h2>
+
+    <hr />
+
+    <div>
+        <button id="refreshDataBtn">Refresh</button>
+        <br />
+        <table>
+            <thead>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Age</th>
+                <th>Email</th>
+                <th></th>
+            </thead>
+            <tbody id="dataListTbl"></tbody>
+        </table>
+
+        <form id="editUserForm" style="display: none;">
+            <fieldset>
+                <legend>Edit User</legend>
+                <input type="text" name="code" placeholder="national code" readonly>
+                <input type="text" name="name" placeholder="name">
+                <input type="number" name="age" placeholder="age">
+                <input type="text" name="email" placeholder="email">
+                <button type="submit">Update User</button>
+            </fieldset>
+        </form>
+    </div>
+
+    <hr />
+
+    <div>
+        <form id="addUserForm">
+            <fieldset>
+                <legend>Add new User</legend>
+                <input type="text" name="code" placeholder="national code">
+                <input type="text" name="name" placeholder="name">
+                <input type="number" name="age" placeholder="age">
+                <input type="text" name="email" placeholder="email">
+                <button type="submit">Add User</button>
+            </fieldset>
+        </form>
+    </div>
+
+    <hr />
+
+
+    <script>
+        // Create an instance of a db object for us to store the open database in (IDBDatabase)
+        var db;
+
+        window.onload = function () {
+            debugger;
+
+            if (!window.indexedDB) {
+                alert("Your browser doesn't support a stable version of IndexedDB. Such and such feature will not be available.");
+            }
+
+            // Open our database; it is created if it doesn't already exist
+            let request = window.indexedDB.open('MyTestDatabase', 1);
+
+            // onerror handler signifies that the database didn't open successfully
+            request.onerror = function (event) {
+                console.log('Database failed to open, error: ' + event.target.errorCode);
+                debugger;
+            };
+
+            // onsuccess handler signifies that the database opened successfully
+            request.onsuccess = function (event) {
+                console.log('Database opened successfully');
+                debugger;
+
+                // Store the opened database object in the db variable. This is used a lot below
+                db = request.result;
+                //or:
+                //db = event.target.result;     
+            };
+
+            // Setup the database tables if this has not already been done
+            request.onupgradeneeded = function (event) {
+                console.log('Database started upgrading');
+                debugger;
+
+                db = event.target.result;
+
+                // Create an objectStore for this database
+                var objectStore = db.createObjectStore("users", { keyPath: "code" });
+
+                objectStore.createIndex('nameIndex', 'name', { unique: false });
+                objectStore.createIndex('emailIndex', 'email', { unique: true });
+            };
+
+            // adding new user
+            document.getElementById("addUserForm").addEventListener("submit", addNewUser);
+
+            // updating a user
+            document.getElementById("editUserForm").addEventListener("submit", updateItem);
+
+            // refresh data list
+            document.getElementById('refreshDataBtn').addEventListener('click', displayUsers);
+
+            // add new user
+            function addNewUser(e) {
+                e.preventDefault();
+                var form = this;
+
+                let user = {
+                    code: e.target.elements.code.value,
+                    name: e.target.elements.name.value,
+                    age: e.target.elements.age.value,
+                    email: e.target.elements.email.value
+                };
+
+                // Make a request to add our item object to the object store
+                let request = db.transaction(['users'], 'readwrite').objectStore("users").add(user);
+
+                request.onsuccess = function (event) {
+                    alert(`${user.name} added to database successfully.`);
+                    form.reset();
+                };
+
+                request.onerror = function (event) {
+                    alert(`some error occured, error code: ${event.target.errorCode}`);
+                }
+            }
+
+            // display user list
+            function displayUsers(e) {
+                var objectStore = db.transaction("users").objectStore("users");
+
+                document.getElementById('dataListTbl').innerHTML = '';
+
+                objectStore.openCursor().onsuccess = function (event) {
+                    var cursor = event.target.result;
+                    if (cursor) {
+                        document.getElementById('dataListTbl').innerHTML +=
+                            `<tr>
+                                <td>${cursor.value.code}</td>
+                                <td>${cursor.value.name}</td>
+                                <td>${cursor.value.age}</td>
+                                <td>${cursor.value.email}</td>
+                                <td>
+                                    <button data-code="${cursor.value.code}" class="updateItemBtn" style="color:blue">U</button>
+                                    <button data-code="${cursor.value.code}" class="removeItemBtn" style="color:red">X</button>                                    
+                                </td>
+                            </tr>`;
+
+                        cursor.continue();
+                    } else {
+                        var delBtns = document.getElementsByClassName('removeItemBtn');
+                        for (let i = 0; i < delBtns.length; i++) {
+                            delBtns[i].addEventListener('click', removeItem);
+                        }
+
+                        var upBtns = document.getElementsByClassName('updateItemBtn');
+                        for (let i = 0; i < upBtns.length; i++) {
+                            upBtns[i].addEventListener('click', loadUpdateForm);
+                        }
+                    }
+                };
+            }
+
+            // remove an item 
+            function removeItem(e) {
+                var btn = this;
+                var code = this.dataset.code;
+
+                if (confirm('are you sure?')) {
+                    var request = db.transaction(["users"], "readwrite")
+                        .objectStore("users").delete(code);
+
+                    request.onsuccess = function (event) {
+                        alert('item removed');
+                        displayUsers();
+                    };
+                }
+            }
+
+            function loadUpdateForm(e) {
+                debugger;
+                document.getElementById("editUserForm").style.display = "block";
+                var btn = this;
+                var code = this.dataset.code;
+
+                var objectStore = db.transaction(["users"], "readwrite").objectStore("users");
+                var request = objectStore.get(code);
+
+                request.onerror = function (event) {
+                    alert('request had error, error code: ' + event.target.errorCode);
+                };
+
+                request.onsuccess = function (event) {
+                    // Get the old value that we want to update and fill form
+                    var data = event.target.result;
+
+                    document.querySelector('#editUserForm input[name="code"]').value = data.code;
+                    document.querySelector('#editUserForm input[name="name"]').value = data.name;
+                    document.querySelector('#editUserForm input[name="age"]').value = data.age;
+                    document.querySelector('#editUserForm input[name="email"]').value = data.email;
+                };
+            }
+
+            function updateItem(e) {
+                debugger;
+                e.preventDefault();
+                var form = this;
+
+                var btn = this;
+                var code = e.target.elements.code.value;
+
+                var objectStore = db.transaction(["users"], "readwrite").objectStore("users");
+                var request = objectStore.get(code);
+
+                request.onsuccess = function (event) {
+                    // Get the old value that we want to update
+                    var data = event.target.result;
+
+                    // update the value(s) in the object that you want to change
+                    data.name = e.target.elements.name.value;
+                    data.age = e.target.elements.age.value;
+                    data.email = e.target.elements.email.value;
+
+                    // Put this updated object back into the database.
+                    var requestUpdate = objectStore.put(data);
+                    requestUpdate.onerror = function (event) {
+                        alert('update error');
+                    };
+                    requestUpdate.onsuccess = function (event) {
+                        alert('successfully updated');
+                        form.reset();
+                        document.getElementById("editUserForm").style.display = "none";
+                        displayUsers();
+                    };
+                };
+
+                request.onerror = function (event) {
+                    alert('request had error, error code: ' + event.target.errorCode);
+                };
+            }
+        }
+    </script>
+</body>
+
+</html>
